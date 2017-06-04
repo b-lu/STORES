@@ -1,4 +1,4 @@
-# Check 1 to 11 and run it within Python IDLE outside ArcMap
+# Check 1 to 10 and run it within Python IDLE outside ArcMap
 # Output: RES_1234, DAM_1234, records.csv
 # Bug reports to: bin.lu@anu.edu.au
 
@@ -16,17 +16,17 @@ arcpy.env.overwriteOutput = True
 os.chdir(directory)
 
 # Import the "DryGully" module
-import DryGullyV20 as DryGully # Check 3
+import DryGully
 
 # Set input datasets and parameters
-highland = "DEM_SA300UP" # Check 4 - Digital elevation model for the target region
-direction = "SAFDIR" # Check 5 - Created from the tools Fill & Flow Direction
-points = "SAPPT" # Check 6 - Pour points: at an inteval of 10 m height; slope < 1:5 (arctan); outside CAPAD
-landslope = "SASLOPE" # Check 7 - A slope raster for the target region
-maxdamheight = 40 # Check 8 - Max dam height: 40 m
-minrescells = 111 # Check 9 - Min reservoir surface area: 10 ha (111 cells)
-dambatter = 1 # Check 10 - Dam batter 1:1
-screenrange = "All" # Check 11 - "All" or range(x ,y)
+highland = "DEM_SA300UP" # Check 3 - Digital elevation model for the target region
+direction = "SAFDIR" # Check 4 - Created from the tools Fill & Flow Direction
+points = "SAPPT" # Check 5 - Pour points: at an inteval of 10 m height; slope < 1:5 (arctan); outside CAPAD
+landslope = "SASLOPE" # Check 6 - A slope raster for the target region
+maxdamheight = 40 # Check 7 - Max dam height: 40 m
+minrescells = 111 # Check 8 - Min reservoir surface area: 10 ha (111 cells)
+dambatter = 1 # Check 9 - Dam batter 1:1
+screenrange = "All" # Check 10 - "All" or range(x ,y)
 
 
 # Launch
