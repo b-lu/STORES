@@ -41,8 +41,8 @@ def landsep(head, slope, cellsize):
         
         # Set Null
         outrassn = os.path.join("in_memory", region + str(head) + stat[1])
-        wherec = "Value <= " + str(head) if stat=="MINIMUM" else "Value >= " + str(-1 * head)
-        arcpy.gp.SetNull_sa(elevdiff, "0", outrassn, wherec)
+        wherec = "Value <= " + str(head) if stat[0]=="MINIMUM" else "Value >= " + str(-1 * head)
+        arcpy.gp.SetNull_sa(elevdiff, "-999", outrassn, wherec)
         print stat[0] + " Set Null finished at " + str(dt.datetime.now())
 
         # Extract by Mask
