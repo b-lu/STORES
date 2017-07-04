@@ -1,8 +1,12 @@
-# This is the version 2.0 of the "DryGully" script - Identify prospective dry-gully sites for off-river PHES.
+# This is the version 2.1 of the "DryGully" script - Identify prospective dry-gully sites for off-river PHES.
 # 1. Remove the class DryGullySites and the def statistics(sites) as Add Field has already included the information.
 # 2. Build an "user interface" - Interface.py
 # 3. Fix a problem with 64-bit ArcGIS products: Tools that use VB expressions, such as Calculate Field, cannot use VB expressions in 64-bit ArcGIS products (ArcGIS for Server, ArcGIS for 64-bit Background Processing, and ArcGIS Runtime).
 # 4. Add exception to escape from any unexpected interruption e.g. arcpy.ExecuteError or RuntimeError.
+# 5. Get rid of "+ str(idx[0])" from "pptlayer", "wshed", "wshedpolygon", "respolygon", "areslayer", "respolygon1", "respolygongda94_", "dampolylinegda94_".
+# 6. Store "appt" in memory instead of geodatabase.
+# 7. Add "resdomain", "resslp", "damdem" for ExtractByAttributes and ExtractByMask.
+# 8. Allow detailed info on arcpy.ExecuteError, RuntimeError to be plotted in IDLE.
 # Bug reports to: bin.lu@anu.edu.au
 
 import os
@@ -10,6 +14,8 @@ import sys
 import arcpy
 import math
 import csv
+import traceback
+import datetime as dt
 from Interface import directory, highland, direction, points, landslope, maxdamheight, minrescells, dambatter, screenrange
 
 
@@ -18,6 +24,9 @@ def screen():
     # Number of pour points
     arcpy.env.extent = points
     print "Number of pour points: " + str(int(arcpy.GetCount_management(points).getOutput(0)))
+
+    # Initialise an error list
+    errorl = []
 
     # Calculation on each of the pour points
     with arcpy.da.SearchCursor(points, "OBJECTID") as cursor:
@@ -32,9 +41,9 @@ def screen():
 
                 # Select a pour point from the layer
                 arcpy.env.extent = points # Recover the Processing Extent
-                lyrpp = arcpy.MakeFeatureLayer_management(in_features=points, out_layer="pptlayer" + str(idx[0]),
+                lyrpp = arcpy.MakeFeatureLayer_management(in_features=points, out_layer="pptlayer",
                                                           where_clause="OBJECTID = " + str(idx[0])) # a layer of a pour point
-                point = arcpy.CopyFeatures_management(in_features=lyrpp, out_feature_class="appt" + str(idx[0]))
+                point = arcpy.CopyFeatures_management(in_features=lyrpp, out_feature_class=os.path.join("in_memory", "appt" + str(idx[0])))
 
                 # Get the coordinates
                 cursor = arcpy.SearchCursor(point)
@@ -46,14 +55,14 @@ def screen():
                 arcpy.env.extent = arcpy.Extent(longitude-0.05, latitude+0.05, longitude+0.05, latitude-0.05)
 
                 # Calculate watershed and reservoir
-                watershed = arcpy.gp.Watershed_sa(direction, point, "wshed" + str(idx[0]), "OBJECTID") # Define a watershed
+                watershed = arcpy.gp.Watershed_sa(direction, point, "wshed", "OBJECTID") # Define a watershed
                 watershed = arcpy.gp.ExtractByMask_sa(highland, watershed) # Get the DEM of a watershed
                 watershed = arcpy.Raster(watershed)
                 elevpoint = watershed.minimum
                 if elevpoint==None:
                     print "Watershed of Point " + str(idx[0]) + " is None (ignored)."
                     continue
-                reservoir = arcpy.gp.ExtractByAttributes_sa(watershed, "VALUE <= " + str(elevpoint + maxdamheight)) 
+                reservoir = arcpy.gp.ExtractByAttributes_sa(watershed, "VALUE <= " + str(elevpoint + maxdamheight), "resdomain") 
 
                 # Calculate the area of a reservoir in cells
                 with arcpy.da.SearchCursor(reservoir, "COUNT") as cursor:
@@ -65,11 +74,11 @@ def screen():
                     continue
                 else:
                     watershed_polygon = arcpy.RasterToPolygon_conversion(in_raster=watershed * 0,
-                                                                         out_polygon_features="wshedpolygon" + str(idx[0]),
+                                                                         out_polygon_features="wshedpolygon",
                                                                          simplify="NO_SIMPLIFY")
                     reservoir = arcpy.Raster(reservoir)
                     reservoir_polygon = arcpy.RasterToPolygon_conversion(in_raster=reservoir * 0,
-                                                                         out_polygon_features="respolygon" + str(idx[0]),
+                                                                         out_polygon_features="respolygon",
                                                                          simplify="NO_SIMPLIFY")
                    
                 # If there is an isolated tiny polygon?
@@ -77,9 +86,9 @@ def screen():
                 if rescount>1:
                     with arcpy.da.SearchCursor(reservoir_polygon, "SHAPE_AREA") as cursor:
                         maxresarea = max([a[0] for a in cursor])
-                    lyrres = arcpy.MakeFeatureLayer_management(in_features=reservoir_polygon, out_layer="areslayer" + str(idx[0]),
+                    lyrres = arcpy.MakeFeatureLayer_management(in_features=reservoir_polygon, out_layer="areslayer",
                                                                where_clause="SHAPE_AREA = " + str(maxresarea)) # a layer of a polygon
-                    reservoir_polygon = arcpy.CopyFeatures_management(in_features=lyrres, out_feature_class="respolygon1" + str(idx[0]))
+                    reservoir_polygon = arcpy.CopyFeatures_management(in_features=lyrres, out_feature_class="respolygon1")
                 assert int(arcpy.GetCount_management(reservoir_polygon).getOutput(0))==1
 
                 # Write the coordinates
@@ -93,13 +102,13 @@ def screen():
                 fieldlot.append(("Elevation_m", elevpoint))
 
                 # Calculate the average slope of a reservoir
-                resslope = arcpy.gp.ExtractByMask_sa(landslope, reservoir_polygon) # Get the DEM of a watershed
+                resslope = arcpy.gp.ExtractByMask_sa(landslope, reservoir_polygon, "resslp") # Get the DEM of a watershed
                 resslope = arcpy.Raster(resslope)
 
                 # Project to GDA 1994 Geoscience Australia Lambert: 3112
                 # GCS_WGS_1984: 4326
                 reservoir_polygongda94 = arcpy.Project_management(in_dataset=reservoir_polygon,
-                                                                  out_dataset="respolygongda94_" + str(idx[0]),
+                                                                  out_dataset="respolygongda94",
                                                                   out_coor_system=arcpy.SpatialReference(3112),
                                                                   transform_method="GDA_1994_To_WGS_1984",
                                                                   in_coor_system=arcpy.SpatialReference(4326))
@@ -123,7 +132,7 @@ def screen():
                 # Project to GDA 1994 Geoscience Australia Lambert: 3112
                 # GCS_WGS_1984: 4326
                 dam_polylinegda94 = arcpy.Project_management(in_dataset=dam_polyline,
-                                                             out_dataset="dampolylinegda94_" + str(idx[0]),
+                                                             out_dataset="dampolylinegda94",
                                                              out_coor_system=arcpy.SpatialReference(3112),
                                                              transform_method="GDA_1994_To_WGS_1984",
                                                              in_coor_system=arcpy.SpatialReference(4326))
@@ -134,7 +143,7 @@ def screen():
                 fieldlot.append(("Dam_length_m", damlength))
 
                 # Get the DEM of a dam
-                dam = arcpy.gp.ExtractByMask_sa(highland, dam_polyline)
+                dam = arcpy.gp.ExtractByMask_sa(highland, dam_polyline, "damdem")
                 dam = arcpy.Raster(dam)
 
                 # Calculate the inside area of a dam in hectares
@@ -165,14 +174,22 @@ def screen():
 
             # Escape from any unexpected interruption
             except arcpy.ExecuteError as err:
+                errorl.append(idx[0])
+                print "Occurs at: " + str(dt.datetime.now())
                 print "ArcPy ExecuteError: {0}".format(err)
                 continue
             except RuntimeError:
-                print "Python RuntimeError: ", sys.exc_info()[0]
+                errorl.append(idx[0])
+                print "Occurs at: " + str(dt.datetime.now())
+                print traceback.format_exc(sys.exc_info())
                 continue
+            except AssertionError:
+                print traceback.format_exc(sys.exc_info())
+                continue                
 
             # Record the information for each site
             with open(os.path.join(directory, "records.csv"), "a") as csvfile:
                 writer = csv.writer(csvfile)
                 writer.writerow(("RES_" + str(idx[0]), coordinates, elevation, waterarea, groundarea, resvolume, damlength, damarea, damvolume, wrratio))
-                
+
+    print errorl                
